@@ -134,6 +134,69 @@ static auto encode_guid(video_codec codec)
 	throw std::out_of_range("Invalid codec " + std::to_string(codec));
 }
 
+static auto quality_preset_from_options(encoder_settings & settings)
+{
+	GUID defaultPreset = NV_ENC_PRESET_P4_GUID;
+
+	try
+	{
+		int nvenc_preset = std::stoi(settings.options["nvenc_preset"]);
+
+		switch (nvenc_preset) {
+			case 1:
+				return NV_ENC_PRESET_P1_GUID;
+			case 2:
+				return NV_ENC_PRESET_P2_GUID;
+			case 3:
+				return NV_ENC_PRESET_P3_GUID;
+			case 4:
+				return NV_ENC_PRESET_P4_GUID;
+			case 5:
+				return NV_ENC_PRESET_P5_GUID;
+			case 6:
+				return NV_ENC_PRESET_P6_GUID;
+			case 7:
+				return NV_ENC_PRESET_P7_GUID;
+			default:
+				       return defaultPreset;
+		}
+	}
+	catch (...)
+	{
+		return defaultPreset;
+	}
+}
+
+static auto tuning_from_options(encoder_settings & settings)
+{
+	try
+	{
+		int nvenc_tuning = std::stoi(settings.options["nvenc_tuning"]);
+
+		return static_cast<NV_ENC_TUNING_INFO>(nvenc_tuning);
+	}
+	catch (...)
+	{
+		return NV_ENC_TUNING_INFO_LOW_LATENCY;
+	}
+}
+
+static auto multipass_from_options(encoder_settings & settings)
+{
+	NV_ENC_MULTI_PASS default_multipass = NV_ENC_MULTI_PASS_DISABLED;
+
+	try
+	{
+		int nvenc_multipass = std::stoi(settings.options["nvenc_multipass"]);
+
+		return static_cast<NV_ENC_MULTI_PASS>(nvenc_multipass);
+	}
+	catch (...)
+	{
+		return default_multipass;
+	}
+}
+
 video_encoder_nvenc::video_encoder_nvenc(
         wivrn_vk_bundle & vk,
         encoder_settings & settings,
@@ -189,8 +252,8 @@ video_encoder_nvenc::video_encoder_nvenc(
 	// NV_ENC_PRESET_P7_GUID;
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wdeprecated-declarations"
-	auto presetGUID = NV_ENC_PRESET_P4_GUID;
-	NV_ENC_TUNING_INFO tuningInfo = NV_ENC_TUNING_INFO_LOW_LATENCY;
+	auto presetGUID = quality_preset_from_options(settings);
+	NV_ENC_TUNING_INFO tuningInfo = tuning_from_options(settings);
 #pragma GCC diagnostic pop
 	NV_ENC_PRESET_CONFIG preset_config{
 	        .version = NV_ENC_PRESET_CONFIG_VER,
@@ -210,6 +273,16 @@ video_encoder_nvenc::video_encoder_nvenc(
 
 	params.gopLength = NVENC_INFINITE_GOPLENGTH;
 	params.frameIntervalP = 1;
+
+	if (settings.options.contains("nvenc_multipass"))
+	{
+		params.rcParams.multiPass = multipass_from_options(settings);
+	}
+
+	if (settings.options.contains("nvenc_spatial_aq"))
+	{
+		params.rcParams.enableAQ = std::stoi(settings.options["nvenc_spatial_aq"]);
+	}
 
 	switch (settings.codec)
 	{
