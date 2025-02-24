@@ -155,6 +155,8 @@ wivrn::wivrn_session::wivrn_session(std::unique_ptr<wivrn_connection> connection
 		throw;
 	}
 
+	static_roles.head = xdevs[xdev_count++] = &hmd;
+
 	if (hmd.face_tracking_supported)
 		static_roles.face = &hmd;
 
@@ -224,8 +226,6 @@ wivrn::wivrn_session::wivrn_session(std::unique_ptr<wivrn_connection> connection
 			static_roles.body = solar_devs[i];
 	}
 #endif
-
-	static_roles.head = xdevs[xdev_count++] = &hmd;
 
 	if (roles.left >= 0)
 		roles.left_profile = xdevs[roles.left]->name;
@@ -310,8 +310,76 @@ void wivrn_session::operator()(from_headset::headset_info_packet &&)
 {
 	U_LOG_W("unexpected headset info packet, ignoring");
 }
+
+static xrt_device_name get_name(interaction_profile profile)
+{
+	switch (profile)
+	{
+		case interaction_profile::none:
+			return XRT_DEVICE_INVALID;
+		case interaction_profile::khr_simple_controller:
+			return XRT_DEVICE_SIMPLE_CONTROLLER;
+		case interaction_profile::bytedance_pico_neo3_controller:
+			return XRT_DEVICE_PICO_NEO3_CONTROLLER;
+		case interaction_profile::bytedance_pico4_controller:
+		case interaction_profile::bytedance_pico4s_controller:
+			return XRT_DEVICE_PICO4_CONTROLLER;
+		case interaction_profile::bytedance_pico_g3_controller:
+			return XRT_DEVICE_PICO_G3_CONTROLLER;
+		case interaction_profile::google_daydream_controller:
+			return XRT_DEVICE_DAYDREAM;
+		case interaction_profile::hp_mixed_reality_controller:
+		case interaction_profile::microsoft_motion_controller:
+			return XRT_DEVICE_WMR_CONTROLLER;
+		case interaction_profile::htc_vive_controller:
+			return XRT_DEVICE_VIVE_WAND;
+		case interaction_profile::htc_vive_cosmos_controller:
+			return XRT_DEVICE_VIVE_COSMOS_CONTROLLER;
+		case interaction_profile::htc_vive_focus3_controller:
+			return XRT_DEVICE_VIVE_FOCUS3_CONTROLLER;
+		case interaction_profile::htc_vive_pro:
+			return XRT_DEVICE_VIVE_PRO;
+		case interaction_profile::ml_ml2_controller:
+			return XRT_DEVICE_ML2_CONTROLLER;
+		case interaction_profile::microsoft_xbox_controller:
+			return XRT_DEVICE_XBOX_CONTROLLER;
+		case interaction_profile::oculus_go_controller:
+			return XRT_DEVICE_GO_CONTROLLER;
+		case interaction_profile::oculus_touch_controller:
+		case interaction_profile::meta_touch_controller_rift_cv1:
+		case interaction_profile::meta_touch_controller_quest_1_rift_s:
+		case interaction_profile::meta_touch_controller_quest_2:
+			return XRT_DEVICE_TOUCH_CONTROLLER;
+		case interaction_profile::meta_touch_pro_controller:
+			return XRT_DEVICE_TOUCH_PRO_CONTROLLER;
+		case interaction_profile::meta_touch_plus_controller:
+			return XRT_DEVICE_TOUCH_PLUS_CONTROLLER;
+		case interaction_profile::samsung_odyssey_controller:
+			return XRT_DEVICE_SAMSUNG_ODYSSEY_CONTROLLER;
+		case interaction_profile::valve_index_controller:
+			return XRT_DEVICE_INDEX_CONTROLLER;
+	}
+	throw std::runtime_error("invalid interaction profile id " + std::to_string(int(profile)));
+}
 void wivrn_session::operator()(from_headset::trackings && tracking)
 {
+	auto left = get_name(tracking.interaction_profiles[0]);
+	auto right = get_name(tracking.interaction_profiles[1]);
+	if (left != roles.left_profile or right != roles.right_profile)
+	{
+		U_LOG_I("Updating interaction profiles: from \n"
+		        "\t%s (left)  to %s\n"
+		        "\t%s (right) to %s\n",
+		        std::string(magic_enum::enum_name(roles.left_profile)).c_str(),
+		        std::string(magic_enum::enum_name(left)).c_str(),
+		        std::string(magic_enum::enum_name(roles.right_profile)).c_str(),
+		        std::string(magic_enum::enum_name(right)).c_str());
+		std::lock_guard lock(roles_mutex);
+		roles.left_profile = left;
+		roles.right_profile = right;
+		++roles.generation_id;
+	}
+
 	for (auto & item: tracking.items)
 		(*this)(item);
 }

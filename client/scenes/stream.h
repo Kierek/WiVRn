@@ -77,6 +77,7 @@ private:
 	std::thread network_thread;
 	std::mutex tracking_control_mutex;
 	to_headset::tracking_control tracking_control{};
+	std::array<std::atomic<interaction_profile>, 2> interaction_profiles; // left and right hand
 	std::atomic<bool> recenter_requested = false;
 	std::atomic<XrDuration> display_time_phase = 0;
 	std::atomic<XrDuration> display_time_period = 0;
@@ -112,9 +113,9 @@ private:
 	{
 		XrAction action;
 		XrPath path;
-		std::atomic<float> amplitude;
+		float amplitude;
 	};
-	std::array<haptics_action, 2> haptics_actions;
+	std::unordered_multimap<device_id, haptics_action> haptics_actions;
 	std::vector<std::tuple<device_id, XrAction, XrActionType>> input_actions;
 
 	state state_ = state::initializing;
